@@ -1,29 +1,18 @@
 pipeline {
   agent any
   environment {
-    DOCKER_REGISTRY = "my-docker-registry.com"
-    IMAGE_NAME = "my-flask-app"
-    CONTAINER_NAME = "my-flask-container"
+    APP_PORT = "5000"
     GIT_BRANCH = "${env.BRANCH_NAME}"
   }
   stages {
-    stage('Build') {
+    stage('Install dependencies') {
       steps {
-        script {
-          docker.build("${DOCKER_REGISTRY}/${IMAGE_NAME}:${GIT_BRANCH}", ".")
-        }
+        sh 'pip install -r requirements.txt'
       }
     }
     stage('Test') {
       steps {
-        script {
-          docker.withRegistry("${DOCKER_REGISTRY}", 'docker-registry') {
-            docker.image("${DOCKER_REGISTRY}/${IMAGE_NAME}:${GIT_BRANCH}").push()
-          }
-        }
-        sh 'docker-compose up -d'
-        sh 'docker-compose exec -T flask pytest'
-        sh 'docker-compose down'
+        sh 'pytest'
       }
     }
     stage('Deploy to Dev') {
@@ -31,14 +20,7 @@ pipeline {
         branch 'dev'
       }
       steps {
-        script {
-          docker.withRegistry("${DOCKER_REGISTRY}", 'docker-registry') {
-            docker.image("${DOCKER_REGISTRY}/${IMAGE_NAME}:${GIT_BRANCH}").push()
-          }
-          sh "ssh user@dev-server 'docker pull ${DOCKER_REGISTRY}/${IMAGE_NAME}:${GIT_BRANCH}'"
-          sh "ssh user@dev-server 'docker stop ${CONTAINER_NAME} || true && docker rm ${CONTAINER_NAME} || true'"
-          sh "ssh user@dev-server 'docker run -d --name ${CONTAINER_NAME} -p 80:5000 ${DOCKER_REGISTRY}/${IMAGE_NAME}:${GIT_BRANCH}'"
-        }
+        sh 'gunicorn app:app -b 0.0.0.0:${APP_PORT} -w 4 -k gthread &'
       }
     }
     stage('Deploy to Prod') {
@@ -46,14 +28,7 @@ pipeline {
         branch 'main'
       }
       steps {
-        script {
-          docker.withRegistry("${DOCKER_REGISTRY}", 'docker-registry') {
-            docker.image("${DOCKER_REGISTRY}/${IMAGE_NAME}:${GIT_BRANCH}").push()
-          }
-          sh "ssh user@prod-server 'docker pull ${DOCKER_REGISTRY}/${IMAGE_NAME}:${GIT_BRANCH}'"
-          sh "ssh user@prod-server 'docker stop ${CONTAINER_NAME} || true && docker rm ${CONTAINER_NAME} || true'"
-          sh "ssh user@prod-server 'docker run -d --name ${CONTAINER_NAME} -p 80:5000 ${DOCKER_REGISTRY}/${IMAGE_NAME}:${GIT_BRANCH}'"
-        }
+        sh 'gunicorn app:app -b 0.0.0.0:${APP_PORT} -w 4 -k gthread &'
       }
     }
   }
