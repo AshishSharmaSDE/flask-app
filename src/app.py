@@ -19,4 +19,4 @@ def multiply(x, y):
     return str(x * y)
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug= True, host = "0.0.0.0")
